@@ -1,0 +1,31 @@
+# Helm values for the OpenClaw K8s Operator
+# Install with:
+# helm install openclaw-operator \
+#   oci://ghcr.io/openclaw-rocks/charts/openclaw-operator \
+#   --namespace openclaw-operator-system \
+#   --create-namespace \
+#   -f operator-values.yaml
+
+replicaCount: 1
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Default settings for all OpenClawInstance CRDs
+defaults:
+  storage:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: "local-path" # K3s default storage class
+  chromium:
+    enabled: true
+  security:
+    networkPolicy:
+      enabled: true
+    runAsNonRoot: true

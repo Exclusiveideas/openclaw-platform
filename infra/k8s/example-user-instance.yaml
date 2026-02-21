@@ -1,0 +1,80 @@
+# Example: How a user's OpenClaw instance is created
+# This is generated programmatically by the orchestrator service
+# when a user provisions their instance via /api/instance/provision
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: user-abc12345
+  labels:
+    app: openclaw-platform
+    user-instance: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-api-keys
+  namespace: user-abc12345
+type: Opaque
+stringData:
+  # These are injected by the orchestrator from the user's encrypted keys
+  OPENROUTER_API_KEY: "sk-or-v1-user-key-here"
+  OPENCLAW_GATEWAY_TOKEN: "unique-gateway-token-here"
+---
+apiVersion: openclaw.rocks/v1alpha1
+kind: OpenClawInstance
+metadata:
+  name: agent
+  namespace: user-abc12345
+spec:
+  envFrom:
+    - secretRef:
+        name: openclaw-api-keys
+  storage:
+    persistence:
+      enabled: true
+      size: 10Gi
+  chromium:
+    enabled: true
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  security:
+    networkPolicy:
+      enabled: true
+---
+# Network policy for isolation — deny all ingress/egress between user namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+  namespace: user-abc12345
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from the platform namespace (API proxy)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app: openclaw-platform
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow outbound internet (for the agent to browse, call APIs)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # Block access to other user namespaces' pod CIDRs
+              - 10.0.0.0/8

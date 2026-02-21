@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String   @id @default(uuid())
+  whopUserId String   @unique @map("whop_user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  apiKeys  UserApiKey[]
+  instance UserInstance?
+  tasks    Task[]
+
+  @@map("users")
+}
+
+model UserApiKey {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  provider     String   // 'openrouter', 'anthropic', 'openai'
+  encryptedKey String   @map("encrypted_key")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("user_api_keys")
+}
+
+model UserInstance {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  k8sNamespace String   @map("k8s_namespace")
+  gatewayToken String   @map("gateway_token")
+  status       String   @default("provisioning") // provisioning | running | hibernated | error
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_instances")
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  status    String   @default("active") // active | completed | archived
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("tasks")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  taskId    String   @map("task_id")
+  role      String   // 'user' | 'assistant' | 'system'
+  content   String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}

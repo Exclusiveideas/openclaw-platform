@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-platform
+  labels:
+    app: openclaw-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-operator-system
+  labels:
+    app: openclaw-operator

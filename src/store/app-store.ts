@@ -1,0 +1,128 @@
+"use client";
+
+import { create } from "zustand";
+
+export type InstanceStatus =
+  | "provisioning"
+  | "running"
+  | "hibernated"
+  | "waking"
+  | "error"
+  | "none";
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  status: "active" | "completed" | "archived";
+  lastMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface AppState {
+  // Auth
+  whopUserId: string | null;
+  experienceId: string | null;
+  setAuth: (userId: string, experienceId: string) => void;
+
+  // Instance
+  instanceStatus: InstanceStatus;
+  setInstanceStatus: (status: InstanceStatus) => void;
+
+  // Tasks
+  tasks: TaskItem[];
+  setTasks: (tasks: TaskItem[]) => void;
+  addTask: (task: TaskItem) => void;
+
+  // Task mutations
+  updateTask: (id: string, updates: Partial<Pick<TaskItem, "title" | "status">>) => void;
+  removeTask: (id: string) => void;
+
+  // Active task / chat
+  activeTaskId: string | null;
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  setActiveTask: (taskId: string | null) => void;
+  setMessages: (messages: ChatMessage[]) => void;
+  addMessage: (message: ChatMessage) => void;
+  updateLastMessage: (content: string) => void;
+  setIsStreaming: (streaming: boolean) => void;
+
+  // UI state
+  sidebarOpen: boolean;
+  settingsOpen: boolean;
+  onboardingComplete: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setOnboardingComplete: (complete: boolean) => void;
+
+  // API key providers configured
+  configuredProviders: string[];
+  setConfiguredProviders: (providers: string[]) => void;
+}
+
+export const useAppStore = create<AppState>((set) => ({
+  // Auth
+  whopUserId: null,
+  experienceId: null,
+  setAuth: (userId, experienceId) =>
+    set({ whopUserId: userId, experienceId }),
+
+  // Instance
+  instanceStatus: "none",
+  setInstanceStatus: (status) => set({ instanceStatus: status }),
+
+  // Tasks
+  tasks: [],
+  setTasks: (tasks) => set({ tasks }),
+  addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
+  updateTask: (id, updates) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+    })),
+  removeTask: (id) =>
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== id),
+      activeTaskId: state.activeTaskId === id ? null : state.activeTaskId,
+      messages: state.activeTaskId === id ? [] : state.messages,
+    })),
+
+  // Active task / chat
+  activeTaskId: null,
+  messages: [],
+  isStreaming: false,
+  setActiveTask: (taskId) => set({ activeTaskId: taskId }),
+  setMessages: (messages) => set({ messages }),
+  addMessage: (message) =>
+    set((state) => ({ messages: [...state.messages, message] })),
+  updateLastMessage: (content) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      if (msgs.length > 0) {
+        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content };
+      }
+      return { messages: msgs };
+    }),
+  setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+
+  // UI state
+  sidebarOpen: true,
+  settingsOpen: false,
+  onboardingComplete: false,
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setOnboardingComplete: (complete) => set({ onboardingComplete: complete }),
+
+  // Providers
+  configuredProviders: [],
+  setConfiguredProviders: (providers) =>
+    set({ configuredProviders: providers }),
+}));
