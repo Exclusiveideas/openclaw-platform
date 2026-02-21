@@ -18,9 +18,18 @@ const PROVIDER_PLACEHOLDERS: Record<string, string> = {
 };
 
 const PROVIDER_LINKS: Record<string, { label: string; url: string }> = {
-  anthropic: { label: "console.anthropic.com", url: "https://console.anthropic.com/settings/keys" },
-  openai: { label: "platform.openai.com", url: "https://platform.openai.com/api-keys" },
-  gemini: { label: "aistudio.google.com", url: "https://aistudio.google.com/apikey" },
+  anthropic: {
+    label: "console.anthropic.com",
+    url: "https://console.anthropic.com/settings/keys",
+  },
+  openai: {
+    label: "platform.openai.com",
+    url: "https://platform.openai.com/api-keys",
+  },
+  gemini: {
+    label: "aistudio.google.com",
+    url: "https://aistudio.google.com/apikey",
+  },
 };
 
 export function SettingsPanel() {
@@ -28,6 +37,12 @@ export function SettingsPanel() {
     useAppStore();
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => setSettingsOpen(false), 300);
+  };
 
   // Auto-dismiss managed by sonner
 
@@ -70,7 +85,9 @@ export function SettingsPanel() {
 
       if (res.ok) {
         toast.success(`${PROVIDER_LABELS[provider]} key removed`);
-        setConfiguredProviders(configuredProviders.filter((p) => p !== provider));
+        setConfiguredProviders(
+          configuredProviders.filter((p) => p !== provider),
+        );
       } else {
         const data = await res.json();
         toast.error(data.error || "Failed to remove key");
@@ -84,17 +101,23 @@ export function SettingsPanel() {
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
-        onClick={() => setSettingsOpen(false)}
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-300 ${
+          isClosing ? "opacity-0" : "animate-fade-in"
+        }`}
+        onClick={handleClose}
       />
 
       {/* Panel */}
-      <div className="relative ml-auto w-full max-w-md bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto">
+      <div
+        className={`relative ml-auto w-full max-w-md bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto transition-transform duration-300 ease-out ${
+          isClosing ? "translate-x-full" : "animate-slide-in-right"
+        }`}
+      >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold">Settings</h2>
             <button
-              onClick={() => setSettingsOpen(false)}
+              onClick={handleClose}
               className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
             >
               <svg
@@ -140,8 +163,8 @@ export function SettingsPanel() {
               Your API Keys (BYOK)
             </h3>
             <p className="text-xs text-neutral-500">
-              Optionally bring your own API keys to use models directly.
-              Keys are encrypted with AES-256-GCM before storage.
+              Optionally bring your own API keys to use models directly. Keys
+              are encrypted with AES-256-GCM before storage.
             </p>
 
             {BYOK_PROVIDERS.map((provider) => {
@@ -178,7 +201,10 @@ export function SettingsPanel() {
                     type="password"
                     value={keys[provider] || ""}
                     onChange={(e) =>
-                      setKeys((prev) => ({ ...prev, [provider]: e.target.value }))
+                      setKeys((prev) => ({
+                        ...prev,
+                        [provider]: e.target.value,
+                      }))
                     }
                     placeholder={
                       isConnected
@@ -197,8 +223,8 @@ export function SettingsPanel() {
                       {isSaving
                         ? "Saving..."
                         : isConnected
-                        ? "Update Key"
-                        : "Save Key"}
+                          ? "Update Key"
+                          : "Save Key"}
                     </button>
                     <a
                       href={PROVIDER_LINKS[provider].url}

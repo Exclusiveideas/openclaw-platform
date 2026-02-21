@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useAppStore, type InstanceStatus } from "@/store/app-store";
 import { Sidebar } from "@/components/sidebar/sidebar";
+import { TopBar } from "@/components/top-bar";
 import { ChatView } from "@/components/chat/chat-view";
 import { SettingsPanel } from "@/components/settings/settings-panel";
 import { InstanceStatusBar } from "@/components/shared/instance-status";
@@ -28,7 +29,6 @@ export function MainApp({
     setInstanceStatus,
     setTasks,
     setMessages,
-    sidebarOpen,
     settingsOpen,
     instanceStatus,
     activeTaskId,
@@ -37,7 +37,6 @@ export function MainApp({
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
 
-  // Initialize auth and state from server props
   useEffect(() => {
     setAuth(whopUserId, experienceId);
     setConfiguredProviders(configuredProviders);
@@ -52,7 +51,6 @@ export function MainApp({
     setInstanceStatus,
   ]);
 
-  // Load tasks from server on mount
   useEffect(() => {
     async function loadTasks() {
       try {
@@ -60,24 +58,32 @@ export function MainApp({
         if (res.ok) {
           const tasks = await res.json();
           setTasks(
-            tasks.map((t: { id: string; title: string; status: string; createdAt: string; updatedAt: string; messages?: { content: string }[] }) => ({
-              id: t.id,
-              title: t.title,
-              status: t.status,
-              lastMessage: t.messages?.[0]?.content,
-              createdAt: t.createdAt,
-              updatedAt: t.updatedAt,
-            }))
+            tasks.map(
+              (t: {
+                id: string;
+                title: string;
+                status: string;
+                createdAt: string;
+                updatedAt: string;
+                messages?: { content: string }[];
+              }) => ({
+                id: t.id,
+                title: t.title,
+                status: t.status,
+                lastMessage: t.messages?.[0]?.content,
+                createdAt: t.createdAt,
+                updatedAt: t.updatedAt,
+              }),
+            ),
           );
         }
       } catch {
-        // Silently fail — tasks will show empty
+        // Silently fail
       }
     }
     loadTasks();
   }, [setTasks]);
 
-  // Load messages when active task changes
   useEffect(() => {
     if (!activeTaskId) {
       setMessages([]);
@@ -98,7 +104,6 @@ export function MainApp({
     loadMessages();
   }, [activeTaskId, setMessages]);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
@@ -157,21 +162,23 @@ export function MainApp({
     }
   }, [setInstanceStatus, startPolling]);
 
-  // Auto-provision or wake instance if needed
   useEffect(() => {
     if (instanceStatus === "none" || instanceStatus === "hibernated") {
       handleInstanceWake();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- only run on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-screen bg-neutral-950 text-white overflow-hidden">
-      {/* Sidebar */}
-      {sidebarOpen && <Sidebar />}
+      {/* Sidebar — animates between collapsed (48px) and expanded (280px) */}
+      <Sidebar />
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Instance status bar (shows when not running) */}
+        {/* Top bar with model selector */}
+        <TopBar />
+
+        {/* Instance status bar */}
         {instanceStatus !== "running" && (
           <InstanceStatusBar
             status={instanceStatus}
@@ -183,7 +190,7 @@ export function MainApp({
         <ChatView disabled={instanceStatus !== "running"} />
       </div>
 
-      {/* Settings panel (overlay) */}
+      {/* Settings panel — slides in from right */}
       {settingsOpen && <SettingsPanel />}
     </div>
   );

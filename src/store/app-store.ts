@@ -43,7 +43,10 @@ interface AppState {
   addTask: (task: TaskItem) => void;
 
   // Task mutations
-  updateTask: (id: string, updates: Partial<Pick<TaskItem, "title" | "status">>) => void;
+  updateTask: (
+    id: string,
+    updates: Partial<Pick<TaskItem, "title" | "status">>,
+  ) => void;
   removeTask: (id: string) => void;
 
   // Active task / chat
@@ -57,9 +60,10 @@ interface AppState {
   setIsStreaming: (streaming: boolean) => void;
 
   // UI state
-  sidebarOpen: boolean;
+  sidebarMode: "rail" | "expanded";
   settingsOpen: boolean;
-  setSidebarOpen: (open: boolean) => void;
+  setSidebarMode: (mode: "rail" | "expanded") => void;
+  toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
 
   // Model selection
@@ -75,8 +79,7 @@ export const useAppStore = create<AppState>((set) => ({
   // Auth
   whopUserId: null,
   experienceId: null,
-  setAuth: (userId, experienceId) =>
-    set({ whopUserId: userId, experienceId }),
+  setAuth: (userId, experienceId) => set({ whopUserId: userId, experienceId }),
 
   // Instance
   instanceStatus: "none",
@@ -116,9 +119,13 @@ export const useAppStore = create<AppState>((set) => ({
   setIsStreaming: (streaming) => set({ isStreaming: streaming }),
 
   // UI state
-  sidebarOpen: true,
+  sidebarMode: "rail",
   settingsOpen: false,
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  setSidebarMode: (mode) => set({ sidebarMode: mode }),
+  toggleSidebar: () =>
+    set((state) => ({
+      sidebarMode: state.sidebarMode === "rail" ? "expanded" : "rail",
+    })),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   // Model selection — default to platform model
