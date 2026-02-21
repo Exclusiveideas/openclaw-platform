@@ -59,12 +59,14 @@ interface AppState {
   // UI state
   sidebarOpen: boolean;
   settingsOpen: boolean;
-  onboardingComplete: boolean;
   setSidebarOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
-  setOnboardingComplete: (complete: boolean) => void;
 
-  // API key providers configured
+  // Model selection
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+
+  // BYOK providers configured by the user
   configuredProviders: string[];
   setConfiguredProviders: (providers: string[]) => void;
 }
@@ -116,10 +118,12 @@ export const useAppStore = create<AppState>((set) => ({
   // UI state
   sidebarOpen: true,
   settingsOpen: false,
-  onboardingComplete: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
-  setOnboardingComplete: (complete) => set({ onboardingComplete: complete }),
+
+  // Model selection — default to platform model
+  selectedModel: "openclaw-pro",
+  setSelectedModel: (model) => set({ selectedModel: model }),
 
   // Providers
   configuredProviders: [],

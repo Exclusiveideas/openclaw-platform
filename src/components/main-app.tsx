@@ -26,7 +26,6 @@ export function MainApp({
     setAuth,
     setConfiguredProviders,
     setInstanceStatus,
-    setOnboardingComplete,
     setTasks,
     setMessages,
     sidebarOpen,
@@ -43,7 +42,6 @@ export function MainApp({
     setAuth(whopUserId, experienceId);
     setConfiguredProviders(configuredProviders);
     setInstanceStatus(initialInstanceStatus as InstanceStatus);
-    setOnboardingComplete(true);
   }, [
     whopUserId,
     experienceId,
@@ -52,7 +50,6 @@ export function MainApp({
     setAuth,
     setConfiguredProviders,
     setInstanceStatus,
-    setOnboardingComplete,
   ]);
 
   // Load tasks from server on mount

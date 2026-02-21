@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { whopsdk } from "@/lib/whop-sdk";
 import { db } from "@/lib/db";
 import { MainApp } from "@/components/main-app";
-import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 
 export default async function ExperiencePage({
   params,
@@ -41,19 +40,8 @@ export default async function ExperiencePage({
     },
   });
 
-  const hasApiKeys = user.apiKeys.length > 0;
   const configuredProviders = user.apiKeys.map((k) => k.provider);
   const instanceStatus = user.instance?.status ?? "none";
-
-  if (!hasApiKeys) {
-    return (
-      <OnboardingFlow
-        userId={user.id}
-        whopUserId={userId}
-        experienceId={experienceId}
-      />
-    );
-  }
 
   return (
     <MainApp

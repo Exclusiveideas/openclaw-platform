@@ -27,32 +27,31 @@ export async function POST() {
       });
     }
 
-    if (user.apiKeys.length === 0) {
-      return NextResponse.json(
-        { error: "No API keys configured" },
-        { status: 400 }
-      );
-    }
-
     const namespace = `user-${user.id.slice(0, 8)}`;
     const gatewayToken = uuid();
 
-    // Build environment variables from user's API keys
+    // Build environment variables from user's BYOK keys + server-side OpenRouter key
     const envVars: Record<string, string> = {
       OPENCLAW_GATEWAY_TOKEN: gatewayToken,
     };
 
+    // Inject server-side OpenRouter key for platform models
+    if (process.env.OPENROUTER_API_KEY) {
+      envVars.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+    }
+
+    // Inject user's BYOK keys
     for (const key of user.apiKeys) {
       const decryptedKey = decrypt(key.encryptedKey);
       switch (key.provider) {
-        case "openrouter":
-          envVars.OPENROUTER_API_KEY = decryptedKey;
-          break;
         case "anthropic":
           envVars.ANTHROPIC_API_KEY = decryptedKey;
           break;
         case "openai":
           envVars.OPENAI_API_KEY = decryptedKey;
+          break;
+        case "gemini":
+          envVars.GOOGLE_API_KEY = decryptedKey;
           break;
       }
     }
