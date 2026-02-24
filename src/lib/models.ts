@@ -3,7 +3,7 @@ export const PLATFORM_MODELS = [
   {
     id: "openclaw-pro",
     name: "OpenClaw Pro",
-    openrouterId: "anthropic/claude-sonnet-4",
+    openrouterId: "qwen/qwen3-32b",
   },
   {
     id: "openclaw-fast",

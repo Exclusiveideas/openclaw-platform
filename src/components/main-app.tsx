@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { useAppStore, type InstanceStatus } from "@/store/app-store";
+import { useEffect } from "react";
+import { useAppStore } from "@/store/app-store";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { ChatView } from "@/components/chat/chat-view";
 import { SettingsPanel } from "@/components/settings/settings-panel";
-import { InstanceStatusBar } from "@/components/shared/instance-status";
+import { toast } from "sonner";
 
 interface MainAppProps {
   userId: string;
@@ -16,13 +16,8 @@ interface MainAppProps {
   initialInstanceStatus: string;
 }
 
-export function MainApp({
-  userId,
-  whopUserId,
-  experienceId,
-  configuredProviders,
-  initialInstanceStatus,
-}: MainAppProps) {
+export function MainApp(props: MainAppProps) {
+  const { whopUserId, experienceId, configuredProviders } = props;
   const {
     setAuth,
     setConfiguredProviders,
@@ -30,22 +25,18 @@ export function MainApp({
     setTasks,
     setMessages,
     settingsOpen,
-    instanceStatus,
     activeTaskId,
   } = useAppStore();
-
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollCountRef = useRef(0);
 
   useEffect(() => {
     setAuth(whopUserId, experienceId);
     setConfiguredProviders(configuredProviders);
-    setInstanceStatus(initialInstanceStatus as InstanceStatus);
+    // TODO(k8s): Restore instance status management when K8s infra is ready
+    setInstanceStatus("running");
   }, [
     whopUserId,
     experienceId,
     configuredProviders,
-    initialInstanceStatus,
     setAuth,
     setConfiguredProviders,
     setInstanceStatus,
@@ -78,7 +69,7 @@ export function MainApp({
           );
         }
       } catch {
-        // Silently fail
+        toast.error("Failed to load tasks");
       }
     }
     loadTasks();
@@ -98,75 +89,11 @@ export function MainApp({
           setMessages(messages);
         }
       } catch {
-        // Silently fail
+        toast.error("Failed to load messages");
       }
     }
     loadMessages();
   }, [activeTaskId, setMessages]);
-
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    pollCountRef.current = 0;
-  }, []);
-
-  const startPolling = useCallback(() => {
-    stopPolling();
-    pollIntervalRef.current = setInterval(async () => {
-      pollCountRef.current++;
-      if (pollCountRef.current > 20) {
-        stopPolling();
-        setInstanceStatus("error");
-        return;
-      }
-      try {
-        const res = await fetch("/api/instance/status");
-        const data = await res.json();
-        setInstanceStatus(data.status);
-        if (data.status === "running" || data.status === "error") {
-          stopPolling();
-        }
-      } catch {
-        stopPolling();
-        setInstanceStatus("error");
-      }
-    }, 3000);
-  }, [stopPolling, setInstanceStatus]);
-
-  const handleInstanceWake = useCallback(async () => {
-    const currentStatus = useAppStore.getState().instanceStatus;
-    try {
-      setInstanceStatus("waking");
-      const endpoint =
-        currentStatus === "none"
-          ? "/api/instance/provision"
-          : "/api/instance/wake";
-      const res = await fetch(endpoint, { method: "POST" });
-      if (res.ok) {
-        startPolling();
-      } else {
-        setInstanceStatus("error");
-      }
-    } catch {
-      setInstanceStatus("error");
-    }
-  }, [setInstanceStatus, startPolling]);
-
-  useEffect(() => {
-    if (instanceStatus === "none" || instanceStatus === "hibernated") {
-      handleInstanceWake();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-screen bg-neutral-950 text-white overflow-hidden">
@@ -178,16 +105,8 @@ export function MainApp({
         {/* Top bar with model selector */}
         <TopBar />
 
-        {/* Instance status bar */}
-        {instanceStatus !== "running" && (
-          <InstanceStatusBar
-            status={instanceStatus}
-            onRetry={handleInstanceWake}
-          />
-        )}
-
         {/* Chat view */}
-        <ChatView disabled={instanceStatus !== "running"} />
+        <ChatView disabled={false} />
       </div>
 
       {/* Settings panel — slides in from right */}

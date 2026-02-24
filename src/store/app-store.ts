@@ -19,12 +19,34 @@ export interface TaskItem {
   updatedAt: string;
 }
 
+export interface MessageAttachment {
+  id: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  s3Key: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   metadata?: Record<string, unknown>;
+  attachments?: MessageAttachment[];
   createdAt: string;
+}
+
+export interface PendingAttachment {
+  localId: string;
+  file: File;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  s3Key?: string;
+  url?: string;
+  uploading: boolean;
+  error?: string;
 }
 
 interface AppState {
@@ -73,6 +95,16 @@ interface AppState {
   // BYOK providers configured by the user
   configuredProviders: string[];
   setConfiguredProviders: (providers: string[]) => void;
+
+  // Pending attachments (pre-send)
+  pendingAttachments: PendingAttachment[];
+  addPendingAttachment: (attachment: PendingAttachment) => void;
+  removePendingAttachment: (localId: string) => void;
+  updatePendingAttachment: (
+    localId: string,
+    updates: Partial<PendingAttachment>,
+  ) => void;
+  clearPendingAttachments: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -136,4 +168,24 @@ export const useAppStore = create<AppState>((set) => ({
   configuredProviders: [],
   setConfiguredProviders: (providers) =>
     set({ configuredProviders: providers }),
+
+  // Pending attachments
+  pendingAttachments: [],
+  addPendingAttachment: (attachment) =>
+    set((state) => ({
+      pendingAttachments: [...state.pendingAttachments, attachment],
+    })),
+  removePendingAttachment: (localId) =>
+    set((state) => ({
+      pendingAttachments: state.pendingAttachments.filter(
+        (a) => a.localId !== localId,
+      ),
+    })),
+  updatePendingAttachment: (localId, updates) =>
+    set((state) => ({
+      pendingAttachments: state.pendingAttachments.map((a) =>
+        a.localId === localId ? { ...a, ...updates } : a,
+      ),
+    })),
+  clearPendingAttachments: () => set({ pendingAttachments: [] }),
 }));
