@@ -48,6 +48,7 @@ export function TopBar() {
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-neutral-800/50 text-neutral-200 text-sm font-medium transition-colors"
+          aria-label="Select model"
         >
           <span>{currentModelName}</span>
           <svg

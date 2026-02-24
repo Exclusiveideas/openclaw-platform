@@ -1,0 +1,5 @@
+export const MESSAGE_CHAR_LIMIT = 10_000;
+export const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS = 5;
+export const MESSAGE_HISTORY_LIMIT = 50;
+export const PRESIGNED_URL_EXPIRY_SECONDS = 900;

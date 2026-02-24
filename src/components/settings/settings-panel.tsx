@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAppStore } from "@/store/app-store";
 import { PLATFORM_MODELS, BYOK_PROVIDERS } from "@/lib/models";
 import { toast } from "sonner";
@@ -38,11 +38,31 @@ export function SettingsPanel() {
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<Element | null>(null);
 
-  const handleClose = () => {
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement;
+    closeButtonRef.current?.focus();
+    return () => {
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus();
+      }
+    };
+  }, []);
+
+  const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => setSettingsOpen(false), 300);
-  };
+  }, [setSettingsOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handleClose]);
 
   // Auto-dismiss managed by sonner
 
@@ -117,8 +137,10 @@ export function SettingsPanel() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold">Settings</h2>
             <button
+              ref={closeButtonRef}
               onClick={handleClose}
               className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+              aria-label="Close settings"
             >
               <svg
                 className="w-5 h-5"

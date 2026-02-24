@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId, handleRouteError } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadFile, getSignedFileUrl, buildS3Key } from "@/lib/s3";
+import { rateLimit } from "@/lib/rate-limit";
+import { FILE_SIZE_LIMIT } from "@/lib/constants";
 import { randomUUID } from "crypto";
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -20,7 +20,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 function isAllowedMimeType(type: string): boolean {
-  return ALLOWED_MIME_TYPES.has(type) || type.startsWith("image/");
+  return ALLOWED_MIME_TYPES.has(type);
 }
 
 function getExtension(fileName: string): string {
@@ -31,6 +31,9 @@ function getExtension(fileName: string): string {
 export async function POST(req: NextRequest) {
   try {
     const userId = await getAuthUserId();
+
+    const rl = await rateLimit("attachments-upload", userId, 30);
+    if (rl.limited) return rl.response;
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > FILE_SIZE_LIMIT) {
       return NextResponse.json(
         { error: "File must be 10MB or less" },
         { status: 400 },

@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { ChatView } from "@/components/chat/chat-view";
 import { SettingsPanel } from "@/components/settings/settings-panel";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { toast } from "sonner";
 
 interface MainAppProps {
@@ -96,21 +97,17 @@ export function MainApp(props: MainAppProps) {
   }, [activeTaskId, setMessages]);
 
   return (
-    <div className="flex h-screen bg-neutral-950 text-white overflow-hidden">
-      {/* Sidebar — animates between collapsed (48px) and expanded (280px) */}
-      <Sidebar />
+    <ErrorBoundary>
+      <div className="flex h-screen bg-neutral-950 text-white overflow-hidden">
+        <Sidebar />
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar with model selector */}
-        <TopBar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar />
+          <ChatView disabled={false} />
+        </div>
 
-        {/* Chat view */}
-        <ChatView disabled={false} />
+        {settingsOpen && <SettingsPanel />}
       </div>
-
-      {/* Settings panel — slides in from right */}
-      {settingsOpen && <SettingsPanel />}
-    </div>
+    </ErrorBoundary>
   );
 }

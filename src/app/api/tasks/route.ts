@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId, handleRouteError } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
     const userId = await getAuthUserId();
+
+    const rl = await rateLimit("tasks-create", userId, 30);
+    if (rl.limited) return rl.response;
+
     const { title } = await req.json();
 
     // Input validation
     if (typeof title === "string" && title.trim().length > 500) {
       return NextResponse.json(
         { error: "Title must be 500 characters or less" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 

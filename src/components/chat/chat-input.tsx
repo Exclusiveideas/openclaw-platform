@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useAppStore } from "@/store/app-store";
 import { toast } from "sonner";
+import { formatFileSize } from "@/lib/format";
+import { FILE_SIZE_LIMIT, MAX_ATTACHMENTS } from "@/lib/constants";
+
+const STREAM_TIMEOUT_MS = 60_000;
 
 const EMOJI_GRID = [
   "\u{1F600}",
@@ -27,15 +31,8 @@ const EMOJI_GRID = [
   "\u{1F3AF}",
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_TYPES =
   "image/*,.pdf,.csv,.md,.txt,.json,application/pdf,text/plain,text/csv,text/markdown,application/json";
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 interface ChatInputProps {
   disabled: boolean;
@@ -47,6 +44,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const creatingTaskRef = useRef(false);
   const {
     activeTaskId,
     addMessage,
@@ -60,13 +58,23 @@ export function ChatInput({ disabled }: ChatInputProps) {
     removePendingAttachment,
     updatePendingAttachment,
     clearPendingAttachments,
+    prefillInput,
+    setPrefillInput,
   } = useAppStore();
+
+  useEffect(() => {
+    if (prefillInput) {
+      setInput(prefillInput);
+      setPrefillInput("");
+      textareaRef.current?.focus();
+    }
+  }, [prefillInput, setPrefillInput]);
 
   const uploadFile = useCallback(
     async (file: File, taskId: string) => {
       const localId = crypto.randomUUID();
 
-      if (file.size > MAX_FILE_SIZE) {
+      if (file.size > FILE_SIZE_LIMIT) {
         toast.error(`${file.name} exceeds 10MB limit`);
         return;
       }
@@ -118,14 +126,15 @@ export function ChatInput({ disabled }: ChatInputProps) {
       if (!files || files.length === 0) return;
 
       const totalPending = pendingAttachments.length + files.length;
-      if (totalPending > 5) {
-        toast.error("Maximum 5 attachments per message");
+      if (totalPending > MAX_ATTACHMENTS) {
+        toast.error(`Maximum ${MAX_ATTACHMENTS} attachments per message`);
         return;
       }
 
-      // Ensure we have a task to attach to
       let taskId = activeTaskId;
       if (!taskId) {
+        if (creatingTaskRef.current) return;
+        creatingTaskRef.current = true;
         try {
           const res = await fetch("/api/tasks", {
             method: "POST",
@@ -145,6 +154,8 @@ export function ChatInput({ disabled }: ChatInputProps) {
         } catch {
           toast.error("Failed to create task for upload");
           return;
+        } finally {
+          creatingTaskRef.current = false;
         }
       }
 
@@ -169,6 +180,8 @@ export function ChatInput({ disabled }: ChatInputProps) {
 
     let taskId = activeTaskId;
     if (!taskId) {
+      if (creatingTaskRef.current) return;
+      creatingTaskRef.current = true;
       try {
         const res = await fetch("/api/tasks", {
           method: "POST",
@@ -187,12 +200,13 @@ export function ChatInput({ disabled }: ChatInputProps) {
         });
       } catch {
         return;
+      } finally {
+        creatingTaskRef.current = false;
       }
     }
 
-    // Build attachment payload for send
     const uploadedAttachments = pendingAttachments
-      .filter((a) => a.s3Key && !a.error)
+      .filter((a) => a.s3Key && !a.error && !a.uploading)
       .map((a) => ({
         fileName: a.fileName,
         fileType: a.fileType,
@@ -223,6 +237,8 @@ export function ChatInput({ disabled }: ChatInputProps) {
     clearPendingAttachments();
 
     setIsStreaming(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
     try {
       const res = await fetch("/api/chat/send", {
         method: "POST",
@@ -234,6 +250,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
           attachments:
             uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -300,14 +317,19 @@ export function ChatInput({ disabled }: ChatInputProps) {
           }
         }
       }
-    } catch {
+    } catch (err) {
+      const isTimeout =
+        err instanceof DOMException && err.name === "AbortError";
       addMessage({
         id: crypto.randomUUID(),
         role: "system",
-        content: "Failed to send message. Please try again.",
+        content: isTimeout
+          ? "Response timed out. Please try again."
+          : "Failed to send message. Please try again.",
         createdAt: new Date().toISOString(),
       });
     } finally {
+      clearTimeout(timeout);
       setIsStreaming(false);
     }
   }, [
@@ -494,6 +516,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
               disabled={disabled}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/50 transition-colors disabled:opacity-50"
               title="Add attachment"
+              aria-label="Add attachment"
             >
               <svg
                 className="w-[18px] h-[18px]"
@@ -515,6 +538,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
               disabled={disabled}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/50 transition-colors disabled:opacity-50"
               title="Connect tools"
+              aria-label="Connect tools"
             >
               <svg
                 className="w-[18px] h-[18px]"
@@ -536,6 +560,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
               disabled={disabled}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/50 transition-colors disabled:opacity-50"
               title="AI tools"
+              aria-label="AI tools"
             >
               <svg
                 className="w-[18px] h-[18px]"
@@ -561,6 +586,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
                 disabled={disabled}
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/50 transition-colors disabled:opacity-50"
                 title="Emoji"
+                aria-label="Emoji picker"
               >
                 <svg
                   className="w-[18px] h-[18px]"
@@ -597,6 +623,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
               disabled={disabled}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/50 transition-colors disabled:opacity-50"
               title="Voice input"
+              aria-label="Voice input"
             >
               <svg
                 className="w-[18px] h-[18px]"
@@ -623,6 +650,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
                   : "bg-neutral-700/50 text-neutral-500"
               } disabled:cursor-not-allowed`}
               title="Send message"
+              aria-label="Send message"
             >
               <svg
                 className="w-4 h-4"

@@ -7,6 +7,12 @@ import {
   getPlatformModel,
 } from "@/lib/models";
 import { getSignedFileUrl, getFileContent } from "@/lib/s3";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  MESSAGE_CHAR_LIMIT,
+  MAX_ATTACHMENTS,
+  MESSAGE_HISTORY_LIMIT,
+} from "@/lib/constants";
 
 type AttachmentInput = {
   fileName: string;
@@ -18,6 +24,10 @@ type AttachmentInput = {
 export async function POST(req: NextRequest) {
   try {
     const userId = await getAuthUserId();
+
+    const rl = await rateLimit("chat-send", userId, 20);
+    if (rl.limited) return rl.response;
+
     const { taskId, message, model, attachments } = await req.json();
 
     if (!taskId || typeof taskId !== "string") {
@@ -32,9 +42,9 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    if (message.length > 10000) {
+    if (message.length > MESSAGE_CHAR_LIMIT) {
       return NextResponse.json(
-        { error: "Message must be 10000 characters or less" },
+        { error: `Message must be ${MESSAGE_CHAR_LIMIT} characters or less` },
         { status: 400 },
       );
     }
@@ -95,7 +105,7 @@ export async function POST(req: NextRequest) {
     // Validate attachments
     const validAttachments: AttachmentInput[] = [];
     if (Array.isArray(attachments)) {
-      for (const att of attachments.slice(0, 5)) {
+      for (const att of attachments.slice(0, MAX_ATTACHMENTS)) {
         if (att?.fileName && att?.fileType && att?.s3Key && att?.fileSize) {
           validAttachments.push({
             fileName: att.fileName,
@@ -134,7 +144,7 @@ export async function POST(req: NextRequest) {
     const recentMessages = await db.message.findMany({
       where: { taskId },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: MESSAGE_HISTORY_LIMIT,
       select: { role: true, content: true },
     });
 
@@ -254,6 +264,30 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         const reader = openRouterRes.body!.getReader();
         let buffer = "";
+        let saved = false;
+
+        async function saveAssistantMessage(
+          metadata: Record<string, boolean | string | number> = {},
+        ) {
+          if (saved || !fullContent) return null;
+          saved = true;
+
+          const [savedMessage] = await db.$transaction([
+            db.message.create({
+              data: {
+                taskId,
+                role: "assistant",
+                content: fullContent,
+                metadata,
+              },
+            }),
+            db.task.update({
+              where: { id: taskId },
+              data: { updatedAt: new Date() },
+            }),
+          ]);
+          return savedMessage;
+        }
 
         try {
           while (true) {
@@ -271,23 +305,10 @@ export async function POST(req: NextRequest) {
 
               const data = trimmed.slice(6);
               if (data === "[DONE]") {
-                const savedMessage = await db.message.create({
-                  data: {
-                    taskId,
-                    role: "assistant",
-                    content: fullContent,
-                    metadata: {},
-                  },
-                });
-
-                await db.task.update({
-                  where: { id: taskId },
-                  data: { updatedAt: new Date() },
-                });
-
+                const savedMessage = await saveAssistantMessage();
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ done: true, id: savedMessage.id })}\n\n`,
+                    `data: ${JSON.stringify({ done: true, id: savedMessage?.id })}\n\n`,
                   ),
                 );
                 controller.close();
@@ -312,21 +333,8 @@ export async function POST(req: NextRequest) {
           }
 
           // Stream ended without [DONE] — save what we have
-          if (fullContent) {
-            const savedMessage = await db.message.create({
-              data: {
-                taskId,
-                role: "assistant",
-                content: fullContent,
-                metadata: {},
-              },
-            });
-
-            await db.task.update({
-              where: { id: taskId },
-              data: { updatedAt: new Date() },
-            });
-
+          const savedMessage = await saveAssistantMessage();
+          if (savedMessage) {
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({ done: true, id: savedMessage.id })}\n\n`,
@@ -337,17 +345,7 @@ export async function POST(req: NextRequest) {
           controller.close();
         } catch (error) {
           console.error("Stream processing error:", error);
-
-          if (fullContent) {
-            await db.message.create({
-              data: {
-                taskId,
-                role: "assistant",
-                content: fullContent,
-                metadata: { error: true },
-              },
-            });
-          }
+          await saveAssistantMessage({ error: true });
 
           controller.enqueue(
             encoder.encode(

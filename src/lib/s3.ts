@@ -5,6 +5,7 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { PRESIGNED_URL_EXPIRY_SECONDS } from "./constants";
 
 const s3 = new S3Client({
   region: process.env.AWS_S3_REGION!,
@@ -33,7 +34,7 @@ export async function uploadFile(
 
 export async function getSignedFileUrl(key: string): Promise<string> {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-  return getSignedUrl(s3, command, { expiresIn: 3600 });
+  return getSignedUrl(s3, command, { expiresIn: PRESIGNED_URL_EXPIRY_SECONDS });
 }
 
 export async function getFileContent(key: string): Promise<string> {

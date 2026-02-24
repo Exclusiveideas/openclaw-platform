@@ -5,6 +5,7 @@ import { useAppStore } from "@/store/app-store";
 import { ChatInput } from "./chat-input";
 import { MessageBubble } from "./message-bubble";
 import { AgentActivity } from "./agent-activity";
+import { MESSAGE_HISTORY_LIMIT } from "@/lib/constants";
 
 interface ChatViewProps {
   disabled: boolean;
@@ -19,7 +20,8 @@ const SUGGESTED_ACTIONS = [
 ];
 
 export function ChatView({ disabled }: ChatViewProps) {
-  const { messages, activeTaskId, isStreaming } = useAppStore();
+  const { messages, activeTaskId, isStreaming, setPrefillInput } =
+    useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function ChatView({ disabled }: ChatViewProps) {
                 <button
                   key={action.label}
                   disabled={disabled}
+                  onClick={() => setPrefillInput(action.label)}
                   className="px-4 py-2 rounded-full bg-neutral-800/40 border border-neutral-700/40 text-neutral-300 hover:text-white hover:border-neutral-600 hover:bg-neutral-800/60 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {action.label}
@@ -79,6 +82,13 @@ export function ChatView({ disabled }: ChatViewProps) {
                 <MessageBubble message={msg} />
               </div>
             ))}
+
+            {messages.length >= MESSAGE_HISTORY_LIMIT && (
+              <div className="text-center py-2 px-4 text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-800/30 rounded-lg">
+                Only the last {MESSAGE_HISTORY_LIMIT} messages are sent as
+                context. Consider starting a new task for better results.
+              </div>
+            )}
 
             {isStreaming && (
               <div className="flex items-center gap-2 text-neutral-400 text-sm">

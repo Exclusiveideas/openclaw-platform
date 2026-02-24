@@ -33,6 +33,7 @@ export function Sidebar() {
           onClick={toggleSidebar}
           className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white shrink-0 hover:opacity-90 transition-opacity"
           title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
         >
           O
         </button>
@@ -74,6 +75,7 @@ export function Sidebar() {
             expanded ? "px-3 py-2" : "justify-center py-2"
           }`}
           title="New task"
+          aria-label="New task"
         >
           <svg
             className="w-5 h-5 shrink-0"
@@ -97,6 +99,7 @@ export function Sidebar() {
             expanded ? "px-3 py-2" : "justify-center py-2"
           }`}
           title="Search"
+          aria-label="Search tasks"
         >
           <svg
             className="w-5 h-5 shrink-0"
@@ -205,6 +208,7 @@ export function Sidebar() {
             expanded ? "px-3 py-2" : "justify-center py-2"
           }`}
           title="Settings"
+          aria-label="Open settings"
         >
           <svg
             className="w-5 h-5 shrink-0"

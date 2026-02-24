@@ -1,12 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { ChatMessage, MessageAttachment } from "@/store/app-store";
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatFileSize } from "@/lib/format";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -80,6 +76,16 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 }
 
 function AttachmentImage({ attachment }: { attachment: MessageAttachment }) {
+  const [errored, setErrored] = useState(false);
+
+  if (errored) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neutral-700/50 border border-neutral-600 text-xs text-neutral-400">
+        Image expired or unavailable
+      </div>
+    );
+  }
+
   return (
     <a
       href={attachment.url}
@@ -91,6 +97,7 @@ function AttachmentImage({ attachment }: { attachment: MessageAttachment }) {
         src={attachment.url}
         alt={attachment.fileName}
         className="max-h-48 rounded-xl object-cover hover:opacity-90 transition-opacity"
+        onError={() => setErrored(true)}
       />
     </a>
   );

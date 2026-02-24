@@ -2,38 +2,48 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId, handleRouteError } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/encryption";
-import { isByokProvider } from "@/lib/models";
+import { rateLimit } from "@/lib/rate-limit";
+import { auditLog } from "@/lib/audit";
+import {
+  keyPutSchema,
+  keyDeleteSchema,
+  geminiKeyValid,
+} from "@/lib/validation";
 
 export async function PUT(req: NextRequest) {
   try {
     const userId = await getAuthUserId();
-    const { provider, apiKey } = await req.json();
 
-    if (!provider || !apiKey) {
+    const rl = await rateLimit("config-keys", userId, 10);
+    if (rl.limited) return rl.response;
+
+    const body = await req.json();
+    const parsed = keyPutSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Provider and apiKey are required" },
-        { status: 400 }
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
       );
     }
 
-    if (!isByokProvider(provider)) {
-      return NextResponse.json(
-        { error: "Invalid provider. Supported: anthropic, openai, gemini" },
-        { status: 400 }
-      );
-    }
+    const { provider, apiKey } = parsed.data;
 
-    // Basic key format validation per provider
     if (provider === "anthropic" && !apiKey.startsWith("sk-ant-")) {
       return NextResponse.json(
         { error: "Anthropic keys should start with sk-ant-" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (provider === "openai" && !apiKey.startsWith("sk-")) {
       return NextResponse.json(
         { error: "OpenAI keys should start with sk-" },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+    if (provider === "gemini" && !geminiKeyValid(apiKey)) {
+      return NextResponse.json(
+        { error: "Gemini keys should start with AIza" },
+        { status: 400 },
       );
     }
 
@@ -45,7 +55,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Encrypt and store
     const encryptedKey = encrypt(apiKey);
     await db.userApiKey.upsert({
       where: {
@@ -60,6 +69,8 @@ export async function PUT(req: NextRequest) {
         encryptedKey,
       },
     });
+
+    auditLog({ action: "api_key.added", provider, userId });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -91,14 +102,17 @@ export async function GET() {
 export async function DELETE(req: NextRequest) {
   try {
     const userId = await getAuthUserId();
-    const { provider } = await req.json();
 
-    if (!provider || !isByokProvider(provider)) {
-      return NextResponse.json(
-        { error: "Invalid provider" },
-        { status: 400 }
-      );
+    const rl = await rateLimit("config-keys", userId, 10);
+    if (rl.limited) return rl.response;
+
+    const body = await req.json();
+    const parsed = keyDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
+
+    const { provider } = parsed.data;
 
     const user = await db.user.findUnique({
       where: { whopUserId: userId },
@@ -111,6 +125,8 @@ export async function DELETE(req: NextRequest) {
     await db.userApiKey.deleteMany({
       where: { userId: user.id, provider },
     });
+
+    auditLog({ action: "api_key.removed", provider, userId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

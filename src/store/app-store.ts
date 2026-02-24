@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type InstanceStatus =
   | "provisioning"
@@ -105,87 +106,109 @@ interface AppState {
     updates: Partial<PendingAttachment>,
   ) => void;
   clearPendingAttachments: () => void;
+
+  // Suggested action prefill
+  prefillInput: string;
+  setPrefillInput: (text: string) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  // Auth
-  whopUserId: null,
-  experienceId: null,
-  setAuth: (userId, experienceId) => set({ whopUserId: userId, experienceId }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Auth
+      whopUserId: null,
+      experienceId: null,
+      setAuth: (userId, experienceId) =>
+        set({ whopUserId: userId, experienceId }),
 
-  // Instance
-  instanceStatus: "none",
-  setInstanceStatus: (status) => set({ instanceStatus: status }),
+      // Instance
+      instanceStatus: "none",
+      setInstanceStatus: (status) => set({ instanceStatus: status }),
 
-  // Tasks
-  tasks: [],
-  setTasks: (tasks) => set({ tasks }),
-  addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
-  updateTask: (id, updates) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
-    })),
-  removeTask: (id) =>
-    set((state) => ({
-      tasks: state.tasks.filter((t) => t.id !== id),
-      activeTaskId: state.activeTaskId === id ? null : state.activeTaskId,
-      messages: state.activeTaskId === id ? [] : state.messages,
-    })),
+      // Tasks
+      tasks: [],
+      setTasks: (tasks) => set({ tasks }),
+      addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
+      updateTask: (id, updates) =>
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, ...updates } : t,
+          ),
+        })),
+      removeTask: (id) =>
+        set((state) => ({
+          tasks: state.tasks.filter((t) => t.id !== id),
+          activeTaskId: state.activeTaskId === id ? null : state.activeTaskId,
+          messages: state.activeTaskId === id ? [] : state.messages,
+        })),
 
-  // Active task / chat
-  activeTaskId: null,
-  messages: [],
-  isStreaming: false,
-  setActiveTask: (taskId) => set({ activeTaskId: taskId }),
-  setMessages: (messages) => set({ messages }),
-  addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
-  updateLastMessage: (content) =>
-    set((state) => {
-      const msgs = [...state.messages];
-      if (msgs.length > 0) {
-        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content };
-      }
-      return { messages: msgs };
+      // Active task / chat
+      activeTaskId: null,
+      messages: [],
+      isStreaming: false,
+      setActiveTask: (taskId) => set({ activeTaskId: taskId }),
+      setMessages: (messages) => set({ messages }),
+      addMessage: (message) =>
+        set((state) => ({ messages: [...state.messages, message] })),
+      updateLastMessage: (content) =>
+        set((state) => {
+          const msgs = [...state.messages];
+          if (msgs.length > 0) {
+            msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content };
+          }
+          return { messages: msgs };
+        }),
+      setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+
+      // UI state
+      sidebarMode: "rail",
+      settingsOpen: false,
+      setSidebarMode: (mode) => set({ sidebarMode: mode }),
+      toggleSidebar: () =>
+        set((state) => ({
+          sidebarMode: state.sidebarMode === "rail" ? "expanded" : "rail",
+        })),
+      setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+      // Model selection — default to platform model
+      selectedModel: "openclaw-pro",
+      setSelectedModel: (model) => set({ selectedModel: model }),
+
+      // Providers
+      configuredProviders: [],
+      setConfiguredProviders: (providers) =>
+        set({ configuredProviders: providers }),
+
+      // Pending attachments
+      pendingAttachments: [],
+      addPendingAttachment: (attachment) =>
+        set((state) => ({
+          pendingAttachments: [...state.pendingAttachments, attachment],
+        })),
+      removePendingAttachment: (localId) =>
+        set((state) => ({
+          pendingAttachments: state.pendingAttachments.filter(
+            (a) => a.localId !== localId,
+          ),
+        })),
+      updatePendingAttachment: (localId, updates) =>
+        set((state) => ({
+          pendingAttachments: state.pendingAttachments.map((a) =>
+            a.localId === localId ? { ...a, ...updates } : a,
+          ),
+        })),
+      clearPendingAttachments: () => set({ pendingAttachments: [] }),
+
+      // Suggested action prefill
+      prefillInput: "",
+      setPrefillInput: (text) => set({ prefillInput: text }),
     }),
-  setIsStreaming: (streaming) => set({ isStreaming: streaming }),
-
-  // UI state
-  sidebarMode: "rail",
-  settingsOpen: false,
-  setSidebarMode: (mode) => set({ sidebarMode: mode }),
-  toggleSidebar: () =>
-    set((state) => ({
-      sidebarMode: state.sidebarMode === "rail" ? "expanded" : "rail",
-    })),
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
-
-  // Model selection — default to platform model
-  selectedModel: "openclaw-pro",
-  setSelectedModel: (model) => set({ selectedModel: model }),
-
-  // Providers
-  configuredProviders: [],
-  setConfiguredProviders: (providers) =>
-    set({ configuredProviders: providers }),
-
-  // Pending attachments
-  pendingAttachments: [],
-  addPendingAttachment: (attachment) =>
-    set((state) => ({
-      pendingAttachments: [...state.pendingAttachments, attachment],
-    })),
-  removePendingAttachment: (localId) =>
-    set((state) => ({
-      pendingAttachments: state.pendingAttachments.filter(
-        (a) => a.localId !== localId,
-      ),
-    })),
-  updatePendingAttachment: (localId, updates) =>
-    set((state) => ({
-      pendingAttachments: state.pendingAttachments.map((a) =>
-        a.localId === localId ? { ...a, ...updates } : a,
-      ),
-    })),
-  clearPendingAttachments: () => set({ pendingAttachments: [] }),
-}));
+    {
+      name: "openclaw-ui",
+      partialize: (state) => ({
+        sidebarMode: state.sidebarMode,
+        selectedModel: state.selectedModel,
+      }),
+    },
+  ),
+);

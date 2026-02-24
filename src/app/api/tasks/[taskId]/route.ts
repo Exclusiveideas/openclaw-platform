@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUserId, handleRouteError } from "@/lib/auth";
 import { db } from "@/lib/db";
-
-const VALID_STATUSES = ["active", "completed", "archived"];
+import { deleteFile } from "@/lib/s3";
+import { auditLog } from "@/lib/audit";
+import { taskUpdateSchema } from "@/lib/validation";
+import type { TaskStatus } from "@/generated/prisma/client";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
+  { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
     const userId = await getAuthUserId();
@@ -39,7 +41,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
+  { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
     const userId = await getAuthUserId();
@@ -63,36 +65,25 @@ export async function PATCH(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Build update data
-    const data: { title?: string; status?: string } = {};
-
-    if (typeof body.title === "string") {
-      const trimmed = body.title.trim();
-      if (trimmed.length === 0 || trimmed.length > 500) {
-        return NextResponse.json(
-          { error: "Title must be 1-500 characters" },
-          { status: 400 }
-        );
-      }
-      data.title = trimmed;
-    }
-
-    if (typeof body.status === "string") {
-      if (!VALID_STATUSES.includes(body.status)) {
-        return NextResponse.json(
-          { error: `Status must be one of: ${VALID_STATUSES.join(", ")}` },
-          { status: 400 }
-        );
-      }
-      data.status = body.status;
-    }
-
-    if (Object.keys(data).length === 0) {
+    const parsed = taskUpdateSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "No valid fields to update" },
-        { status: 400 }
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
       );
     }
+
+    const { title, status } = parsed.data;
+    if (!title && !status) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 },
+      );
+    }
+
+    const data: { title?: string; status?: TaskStatus } = {};
+    if (title) data.title = title;
+    if (status) data.status = status;
 
     const task = await db.task.update({
       where: { id: taskId },
@@ -107,7 +98,7 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
+  { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
     const userId = await getAuthUserId();
@@ -130,8 +121,22 @@ export async function DELETE(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Cascade delete handled by Prisma schema (onDelete: Cascade on messages)
+    // Collect S3 keys before cascade delete removes attachment records
+    const attachments = await db.attachment.findMany({
+      where: { message: { taskId } },
+      select: { s3Key: true },
+    });
+
     await db.task.delete({ where: { id: taskId } });
+
+    // Best-effort S3 cleanup — don't fail the request
+    if (attachments.length > 0) {
+      Promise.allSettled(attachments.map((a) => deleteFile(a.s3Key))).catch(
+        () => {},
+      );
+    }
+
+    auditLog({ action: "task.deleted", taskId, userId });
 
     return NextResponse.json({ success: true });
   } catch (error) {
