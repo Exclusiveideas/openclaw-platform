@@ -12,7 +12,7 @@ export function middleware() {
       "img-src 'self' blob: data: https://*.amazonaws.com",
       "font-src 'self'",
       "connect-src 'self' https://openrouter.ai",
-      "frame-ancestors 'self' https://*.whop.com",
+      `frame-ancestors 'self' https://whop.com https://*.whop.com${process.env.NODE_ENV === "development" ? " http://localhost:*" : ""}`,
     ].join("; "),
   );
 
@@ -21,7 +21,7 @@ export function middleware() {
     "max-age=63072000; includeSubDomains; preload",
   );
   response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "SAMEORIGIN");
+
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
