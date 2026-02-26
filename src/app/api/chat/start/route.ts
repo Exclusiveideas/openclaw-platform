@@ -8,11 +8,7 @@ import {
 } from "@/lib/models";
 import { getSignedFileUrl, getFileContent } from "@/lib/s3";
 import { rateLimit } from "@/lib/rate-limit";
-import {
-  MESSAGE_CHAR_LIMIT,
-  MAX_ATTACHMENTS,
-  MESSAGE_HISTORY_LIMIT,
-} from "@/lib/constants";
+import { MESSAGE_CHAR_LIMIT, MAX_ATTACHMENTS } from "@/lib/constants";
 
 type AttachmentInput = {
   fileName: string;
@@ -28,14 +24,8 @@ export async function POST(req: NextRequest) {
     const rl = await rateLimit("chat-send", userId, 20);
     if (rl.limited) return rl.response;
 
-    const { taskId, message, model, attachments } = await req.json();
+    const { title, message, model, attachments } = await req.json();
 
-    if (!taskId || typeof taskId !== "string") {
-      return NextResponse.json(
-        { error: "taskId is required" },
-        { status: 400 },
-      );
-    }
     if (!message || typeof message !== "string" || !message.trim()) {
       return NextResponse.json(
         { error: "message is required" },
@@ -48,6 +38,11 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    const taskTitle =
+      typeof title === "string" && title.trim()
+        ? title.slice(0, 500)
+        : message.slice(0, 100);
 
     const selectedModel = typeof model === "string" ? model : "openclaw-pro";
 
@@ -93,15 +88,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify task ownership
-    const task = await db.task.findFirst({
-      where: { id: taskId, userId: user.id },
-    });
-
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
     // Validate attachments
     const validAttachments: AttachmentInput[] = [];
     if (Array.isArray(attachments)) {
@@ -117,30 +103,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Save user message + load history in parallel
-    const [userMessage, recentMessages] = await Promise.all([
-      db.message.create({
+    // Create task + save user message in a single interactive transaction
+    const { task, savedUserMessage } = await db.$transaction(async (tx) => {
+      const t = await tx.task.create({
         data: {
-          taskId,
+          userId: user.id,
+          title: taskTitle,
+          status: "active",
+        },
+      });
+      const m = await tx.message.create({
+        data: {
+          taskId: t.id,
           role: "user",
           content: message,
           metadata: validAttachments.length > 0 ? { hasAttachments: true } : {},
         },
-      }),
-      db.message.findMany({
-        where: { taskId },
-        orderBy: { createdAt: "desc" },
-        take: MESSAGE_HISTORY_LIMIT,
-        select: { role: true, content: true },
-      }),
-    ]);
+      });
+      return { task: t, savedUserMessage: m };
+    });
 
-    // Create attachment records after message save (needs userMessage.id)
+    // Create attachment records (fire-and-forget for streaming speed)
     if (validAttachments.length > 0) {
       db.attachment
         .createMany({
           data: validAttachments.map((att) => ({
-            messageId: userMessage.id,
+            messageId: savedUserMessage.id,
             fileName: att.fileName,
             fileType: att.fileType,
             fileSize: att.fileSize,
@@ -151,7 +139,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Build the current user message content for OpenRouter
-    // For images: multimodal content array; for documents: text extraction
     type ContentPart =
       | { type: "text"; text: string }
       | { type: "image_url"; image_url: { url: string } };
@@ -166,7 +153,6 @@ export async function POST(req: NextRequest) {
         (a) => !a.fileType.startsWith("image/"),
       );
 
-      // Build document text prefix
       let docPrefix = "";
       for (const doc of docAttachments) {
         try {
@@ -178,7 +164,6 @@ export async function POST(req: NextRequest) {
       }
 
       if (imageAttachments.length > 0) {
-        // Multimodal format for images
         const parts: ContentPart[] = [];
         for (const img of imageAttachments) {
           const url = await getSignedFileUrl(img.s3Key);
@@ -196,6 +181,7 @@ export async function POST(req: NextRequest) {
       content: string | ContentPart[];
     };
 
+    // First message — no history to load
     const openRouterMessages: OpenRouterMessage[] = [
       {
         role: "system",
@@ -206,24 +192,12 @@ export async function POST(req: NextRequest) {
           "When a task is complex, break it down into steps. " +
           "Keep responses well-structured using markdown when helpful. Be concise unless the user asks for depth.",
       },
-      // History messages (plain text)
-      ...recentMessages
-        .reverse()
-        .slice(0, -1)
-        .map((m) => ({
-          role: m.role as "user" | "assistant" | "system",
-          content: m.content,
-        })),
-      // Current message (may be multimodal)
       { role: "user", content: currentUserContent },
     ];
 
     const platformModel = getPlatformModel(selectedModel);
     const openrouterModelId = platformModel?.openrouterId ?? selectedModel;
 
-    // TODO(k8s): Replace this direct OpenRouter call with WebSocket forwarding
-    // to the user's OpenClaw Gateway once K8s infrastructure is set up.
-    // See plan: /Users/muftau/.claude/plans/gleaming-whistling-moonbeam.md
     const openRouterRes = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
@@ -261,9 +235,17 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullContent = "";
+    const taskId = task.id;
 
     const stream = new ReadableStream({
       async start(controller) {
+        // Send taskId as the first SSE event so the client can update state
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ taskId, title: taskTitle, createdAt: task.createdAt, updatedAt: task.updatedAt })}\n\n`,
+          ),
+        );
+
         const reader = openRouterRes.body!.getReader();
         let buffer = "";
         let saved = false;
@@ -334,7 +316,6 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Stream ended without [DONE] — save what we have
           const savedMessage = await saveAssistantMessage();
           if (savedMessage) {
             controller.enqueue(

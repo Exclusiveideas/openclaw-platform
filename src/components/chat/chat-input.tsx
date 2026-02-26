@@ -170,40 +170,12 @@ export function ChatInput({ disabled }: ChatInputProps) {
     const text = input.trim();
     if (!text || disabled) return;
 
-    // Check if any attachments are still uploading
     if (pendingAttachments.some((a) => a.uploading)) {
       toast.info("Please wait for uploads to finish");
       return;
     }
 
     setInput("");
-
-    let taskId = activeTaskId;
-    if (!taskId) {
-      if (creatingTaskRef.current) return;
-      creatingTaskRef.current = true;
-      try {
-        const res = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: text.slice(0, 100) }),
-        });
-        const data = await res.json();
-        taskId = data.id;
-        setActiveTask(taskId);
-        addTask({
-          id: data.id,
-          title: data.title,
-          status: "active",
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-        });
-      } catch {
-        return;
-      } finally {
-        creatingTaskRef.current = false;
-      }
-    }
 
     const uploadedAttachments = pendingAttachments
       .filter((a) => a.s3Key && !a.error && !a.uploading)
@@ -215,7 +187,6 @@ export function ChatInput({ disabled }: ChatInputProps) {
         url: a.url,
       }));
 
-    // Build client-side attachments for display
     const displayAttachments = uploadedAttachments.map((a) => ({
       id: crypto.randomUUID(),
       fileName: a.fileName,
@@ -225,6 +196,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
       url: a.url ?? "",
     }));
 
+    // Optimistic: show user message immediately
     addMessage({
       id: crypto.randomUUID(),
       role: "user",
@@ -235,23 +207,42 @@ export function ChatInput({ disabled }: ChatInputProps) {
     });
 
     clearPendingAttachments();
-
     setIsStreaming(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+
+    const isNewConversation = !activeTaskId;
+
     try {
-      const res = await fetch("/api/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId,
-          message: text,
-          model: selectedModel,
-          attachments:
-            uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
-        }),
-        signal: controller.signal,
-      });
+      const res = isNewConversation
+        ? await fetch("/api/chat/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: text.slice(0, 100),
+              message: text,
+              model: selectedModel,
+              attachments:
+                uploadedAttachments.length > 0
+                  ? uploadedAttachments
+                  : undefined,
+            }),
+            signal: controller.signal,
+          })
+        : await fetch("/api/chat/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              taskId: activeTaskId,
+              message: text,
+              model: selectedModel,
+              attachments:
+                uploadedAttachments.length > 0
+                  ? uploadedAttachments
+                  : undefined,
+            }),
+            signal: controller.signal,
+          });
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -286,6 +277,7 @@ export function ChatInput({ disabled }: ChatInputProps) {
       const decoder = new TextDecoder();
       let buffer = "";
       let accumulated = "";
+      let taskMetaReceived = !isNewConversation;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -306,6 +298,22 @@ export function ChatInput({ disabled }: ChatInputProps) {
             if (parsed.error) {
               toast.error(parsed.error);
               break;
+            }
+
+            // First SSE event from /api/chat/start contains task metadata
+            if (!taskMetaReceived && parsed.taskId) {
+              taskMetaReceived = true;
+              const { setIsNewTask } = useAppStore.getState();
+              setIsNewTask(true);
+              setActiveTask(parsed.taskId);
+              addTask({
+                id: parsed.taskId,
+                title: parsed.title ?? text.slice(0, 100),
+                status: "active",
+                createdAt: parsed.createdAt ?? new Date().toISOString(),
+                updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+              });
+              continue;
             }
 
             if (parsed.content) {

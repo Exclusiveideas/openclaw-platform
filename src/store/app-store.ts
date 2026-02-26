@@ -107,6 +107,10 @@ interface AppState {
   ) => void;
   clearPendingAttachments: () => void;
 
+  // New task flag (prevents race condition with message fetch)
+  isNewTask: boolean;
+  setIsNewTask: (v: boolean) => void;
+
   // Suggested action prefill
   prefillInput: string;
   setPrefillInput: (text: string) => void;
@@ -198,6 +202,10 @@ export const useAppStore = create<AppState>()(
           ),
         })),
       clearPendingAttachments: () => set({ pendingAttachments: [] }),
+
+      // New task flag
+      isNewTask: false,
+      setIsNewTask: (v) => set({ isNewTask: v }),
 
       // Suggested action prefill
       prefillInput: "",

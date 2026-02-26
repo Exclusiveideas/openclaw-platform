@@ -82,6 +82,12 @@ export function MainApp(props: MainAppProps) {
       return;
     }
 
+    // Skip fetching messages for a task we just created — they're already in store
+    if (useAppStore.getState().isNewTask) {
+      useAppStore.getState().setIsNewTask(false);
+      return;
+    }
+
     async function loadMessages() {
       try {
         const res = await fetch(`/api/tasks/${activeTaskId}/messages`);
